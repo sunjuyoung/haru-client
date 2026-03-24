@@ -33,6 +33,7 @@ export interface ArtData {
 
 export interface MemoryData {
   rewritten_scene: string;
+  memory_image_url?: string | null;
 }
 
 export type GenerationPhase =

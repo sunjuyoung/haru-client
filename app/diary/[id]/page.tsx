@@ -14,6 +14,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { Header } from "@/components/header";
 import { getDiary, type Diary } from "@/lib/api";
 import { useGenerateDiary, type GenerationPhase } from "@/hooks/useGenerateDiary";
+import { usePageSound } from "@/hooks/usePageSound";
 import Link from "next/link";
 
 export default function DiaryDetailPage() {
@@ -26,6 +27,9 @@ export default function DiaryDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showOverwriteDialog, setShowOverwriteDialog] = useState(false);
+
+  // 페이지 진입 시 연필 소리 1회 재생
+  usePageSound();
 
   // SSE 생성 훅
   const gen = useGenerateDiary();
@@ -327,12 +331,27 @@ function ResultSection({
 
   const sketchUrl = result?.sketch_image_url || sseArt?.sketch_image_url;
   const memoryScene = memory?.rewritten_scene || sseMemory?.rewritten_scene;
+  const memoryImageUrl = memory?.memory_image_url || sseMemory?.memory_image_url;
   const soundKey = result?.sound_key || sseSoundKey;
 
   if (!emotion) return null;
 
   return (
     <div className="mt-6 space-y-5">
+      {/* 시적 제목 + 시 본문 (아코디언) */}
+      {poet && <PoemCard title={poet.poetic_title} poem={poet.poem_text} />}
+
+      {/* 스케치 이미지 */}
+      {sketchUrl && (
+        <div className="overflow-hidden rounded-xl border border-border">
+          <img
+            src={sketchUrl}
+            alt={poet?.poetic_title || "스케치"}
+            className="w-full object-cover"
+          />
+        </div>
+      )}
+
       {/* 감정 분석 결과 */}
       <div className="rounded-xl border border-border p-5">
         <div className="mb-3 flex items-center gap-2">
@@ -355,32 +374,8 @@ function ResultSection({
         </div>
       </div>
 
-      {/* 시적 제목 + 시 본문 */}
-      {poet && (
-        <div className="rounded-xl border border-border p-5 text-center">
-          <h3 className="mb-3 text-base font-semibold">{poet.poetic_title}</h3>
-          <p className="whitespace-pre-wrap text-sm leading-loose text-muted-foreground">
-            {poet.poem_text}
-          </p>
-        </div>
-      )}
-
-      {/* 스케치 이미지 */}
-      {sketchUrl && (
-        <div className="overflow-hidden rounded-xl border border-border">
-          <img
-            src={sketchUrl}
-            alt={poet?.poetic_title || "스케치"}
-            className="w-full object-cover"
-          />
-        </div>
-      )}
-
-      {/* ASMR 사운드 플레이어 */}
-      {soundKey && <SoundPlayer soundKey={soundKey} />}
-
       {/* "존재하지 않은 기억" 카드 */}
-      {memoryScene && <MemoryCard scene={memoryScene} />}
+      {memoryScene && <MemoryCard scene={memoryScene} imageUrl={memoryImageUrl} />}
     </div>
   );
 }
@@ -442,21 +437,116 @@ function SoundPlayer({ soundKey }: { soundKey: string }) {
   );
 }
 
-/** "존재하지 않은 기억" 카드 */
-function MemoryCard({ scene }: { scene: string }) {
+/** 시적 제목 + 시 본문 아코디언 — 제목 클릭 시 시 본문이 펼쳐짐 */
+function PoemCard({ title, poem }: { title: string; poem: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
-    <div className="rounded-xl border border-dashed border-border bg-muted/30 p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="text-sm font-semibold text-muted-foreground">
-          존재하지 않은 기억
-        </span>
-        <span className="text-xs text-muted-foreground/70">
-          — 만약 그때 다르게 행동했다면
-        </span>
+    <div className="rounded-xl border border-border">
+      {/* 아코디언 헤더 — 시적 제목 */}
+      <button
+        onClick={() => {
+          if (!isOpen) {
+            const audio = new Audio("/sounds/pencil_default.mp3");
+            audio.volume = 0.3;
+            audio.play().catch(() => {});
+          }
+          setIsOpen((prev) => !prev);
+        }}
+        aria-expanded={isOpen}
+        className="flex w-full items-center justify-between px-5 py-4 text-left transition-colors hover:bg-muted/50"
+      >
+        <h3 className="text-base font-semibold">{title}</h3>
+        <svg
+          className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* 아코디언 본문 — 시 텍스트 */}
+      <div
+        className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+      >
+        <div className="overflow-hidden">
+          <div className="px-5 pb-5 text-center">
+            <p className="whitespace-pre-wrap text-sm leading-loose text-muted-foreground">
+              {poem}
+            </p>
+          </div>
+        </div>
       </div>
-      <p className="whitespace-pre-wrap text-sm italic leading-relaxed text-muted-foreground">
-        {scene}
-      </p>
+    </div>
+  );
+}
+
+/** "존재하지 않은 기억" 아코디언 카드 — 클릭하면 내용이 펼쳐짐 */
+function MemoryCard({ scene, imageUrl }: { scene: string; imageUrl?: string | null }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="rounded-xl border border-dashed border-border bg-muted/30">
+      {/* 아코디언 헤더 (클릭 영역) */}
+      <button
+        onClick={() => {
+          if (!isOpen) {
+            // 열릴 때 연필 소리 1회 재생
+            const audio = new Audio("/sounds/pencil_default.mp3");
+            audio.volume = 0.3;
+            audio.play().catch(() => {});
+          }
+          setIsOpen((prev) => !prev);
+        }}
+        aria-expanded={isOpen}
+        className="flex w-full items-center justify-between px-5 py-4 text-left transition-colors hover:bg-muted/50"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-muted-foreground">
+            존재하지 않은 기억
+          </span>
+          <span className="text-xs text-muted-foreground/70">
+            — 만약 그때 다르게 행동했다면
+          </span>
+        </div>
+        {/* 화살표 아이콘 */}
+        <svg
+          className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {/* 아코디언 본문 (열림/닫힘 애니메이션) */}
+      <div
+        className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+      >
+        <div className="overflow-hidden">
+          <div className="px-5 pb-5">
+            {/* 몽환적 수채화 이미지 */}
+            {imageUrl && (
+              <div className="mb-4 overflow-hidden rounded-lg">
+                <img
+                  src={imageUrl}
+                  alt="존재하지 않은 기억"
+                  className="w-full object-cover opacity-90"
+                />
+              </div>
+            )}
+
+            <p className="whitespace-pre-wrap text-sm italic leading-relaxed text-muted-foreground">
+              {scene}
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -12,10 +12,14 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Header } from "@/components/header";
 import { createDiary } from "@/lib/api";
+import { usePageSound } from "@/hooks/usePageSound";
 
 export default function DiaryWritePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+
+  // 페이지 진입 시 연필 소리 1회 재생
+  usePageSound();
 
   // 오늘 날짜를 기본값으로
   const today = new Date().toISOString().split("T")[0];
